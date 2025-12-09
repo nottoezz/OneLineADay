@@ -7,48 +7,36 @@ import React, {
   useState,
 } from 'react';
 
-import { Entry, EntriesMap, getAllEntries, saveEntry } from '../services/storage';
+import {
+  Entry,
+  EntriesMap,
+  clearAllEntries,
+  getAllEntries,
+  saveEntry,
+} from '../services/storage';
+import { getTodayDateString } from '../utils/date';
+import {
+  calculateStreaks,
+  countEntriesThisMonth,
+  countTotalEntries,
+} from '../utils/stats';
 
 type EntriesContextValue = {
   entries: EntriesMap;
   loading: boolean;
   error: string | null;
   todayEntry: Entry | null;
-  streakCurrent: number;
   saveTodayEntry: (text: string) => Promise<void>;
+  clearEntries: () => Promise<void>;
+  totalEntries: number;
+  entriesThisMonth: number;
+  currentStreak: number;
+  bestStreak: number;
+  // Legacy naming kept for Today screen compatibility
+  streakCurrent: number;
 };
 
 const EntriesContext = createContext<EntriesContextValue | undefined>(undefined);
-
-function getDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getTodayKey(): string {
-  return getDateKey(new Date());
-}
-
-function getPreviousDateKey(dateKey: string): string {
-  const [year, month, day] = dateKey.split('-').map(Number);
-  const date = new Date(year, (month ?? 1) - 1, day ?? 1);
-  date.setDate(date.getDate() - 1);
-  return getDateKey(date);
-}
-
-function computeStreak(entries: EntriesMap): number {
-  let streak = 0;
-  let cursor = getTodayKey();
-
-  while (entries[cursor]) {
-    streak += 1;
-    cursor = getPreviousDateKey(cursor);
-  }
-
-  return streak;
-}
 
 type EntriesProviderProps = {
   children: React.ReactNode;
@@ -59,7 +47,10 @@ export function EntriesProvider({ children }: EntriesProviderProps) {
   const [todayEntry, setTodayEntry] = useState<Entry | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [streakCurrent, setStreakCurrent] = useState<number>(0);
+  const [totalEntries, setTotalEntries] = useState<number>(0);
+  const [entriesThisMonth, setEntriesThisMonth] = useState<number>(0);
+  const [currentStreak, setCurrentStreak] = useState<number>(0);
+  const [bestStreak, setBestStreak] = useState<number>(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -72,11 +63,10 @@ export function EntriesProvider({ children }: EntriesProviderProps) {
           return;
         }
 
-        const todayKey = getTodayKey();
+        const todayKey = getTodayDateString();
 
         setEntries(allEntries);
         setTodayEntry(allEntries[todayKey] ?? null);
-        setStreakCurrent(computeStreak(allEntries));
         setError(null);
       } catch (err) {
         console.error('[useEntries] load error', err);
@@ -97,11 +87,22 @@ export function EntriesProvider({ children }: EntriesProviderProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const total = countTotalEntries(entries);
+    const monthly = countEntriesThisMonth(entries);
+    const { currentStreak: cStreak, bestStreak: bStreak } = calculateStreaks(entries);
+
+    setTotalEntries(total);
+    setEntriesThisMonth(monthly);
+    setCurrentStreak(cStreak);
+    setBestStreak(bStreak);
+  }, [entries]);
+
   const saveTodayEntry = useCallback(
     async (text: string) => {
       const cleaned = text.trim();
       const nowIso = new Date().toISOString();
-      const todayKey = getTodayKey();
+      const todayKey = getTodayDateString();
       const existing = entries[todayKey];
 
       const entry: Entry = {
@@ -116,7 +117,6 @@ export function EntriesProvider({ children }: EntriesProviderProps) {
         setEntries((prev) => {
           const next = { ...prev, [todayKey]: entry };
           setTodayEntry(entry);
-          setStreakCurrent(computeStreak(next));
           return next;
         });
         setError(null);
@@ -129,16 +129,44 @@ export function EntriesProvider({ children }: EntriesProviderProps) {
     [entries],
   );
 
+  const clearEntries = useCallback(async () => {
+    try {
+      await clearAllEntries();
+      setEntries({});
+      setTodayEntry(null);
+      setError(null);
+    } catch (err) {
+      console.error('[useEntries] clear error', err);
+      setError('Failed to clear entries');
+    }
+  }, []);
+
   const value = useMemo<EntriesContextValue>(
     () => ({
       entries,
       loading,
       error,
       todayEntry,
-      streakCurrent,
       saveTodayEntry,
+      clearEntries,
+      totalEntries,
+      entriesThisMonth,
+      currentStreak,
+      bestStreak,
+      streakCurrent: currentStreak,
     }),
-    [entries, loading, error, todayEntry, streakCurrent, saveTodayEntry],
+    [
+      entries,
+      loading,
+      error,
+      todayEntry,
+      saveTodayEntry,
+      clearEntries,
+      totalEntries,
+      entriesThisMonth,
+      currentStreak,
+      bestStreak,
+    ],
   );
 
   return <EntriesContext.Provider value={value}>{children}</EntriesContext.Provider>;

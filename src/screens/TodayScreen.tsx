@@ -19,7 +19,8 @@ import typography from '../theme/typography';
 const MAX_CHARS = 240;
 
 export default function TodayScreen() {
-  const { todayEntry, saveTodayEntry, loading, streakCurrent, error } = useEntries();
+  const { todayEntry, saveTodayEntry, loading, currentStreak: streakCurrent, error } =
+    useEntries();
   const [text, setText] = useState<string>(todayEntry?.text ?? '');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 

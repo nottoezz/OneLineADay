@@ -56,3 +56,11 @@ export async function saveEntry(entry: Entry): Promise<void> {
   }
 }
 
+export async function clearAllEntries(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.error('[storage] clearAllEntries error', error);
+  }
+}
+
